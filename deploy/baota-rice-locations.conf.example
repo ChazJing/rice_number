@@ -1,0 +1,30 @@
+# Paste these TWO location blocks inside the new rice.chazjing.icu site's
+# existing server { ... } block. Preserve Baota's SSL settings and includes.
+# Do not paste into the original chazjing.icu site or the global nginx.conf.
+# If an existing location / block exists, REPLACE it instead of duplicating it.
+# Do not also create a competing proxy rule in the Baota reverse-proxy tab.
+# At server level, edit the existing client_max_body_size to 20m if present,
+# or add: client_max_body_size 20m;
+
+# Keep HTTP certificate validation reachable after enabling the proxy.
+location ^~ /.well-known/acme-challenge/ {
+    root /www/wwwroot/rice.chazjing.icu/public;
+    default_type text/plain;
+    try_files $uri =404;
+}
+
+# ^~ also proxies CSS, JavaScript and images, instead of letting the default
+# Baota static-file regex locations incorrectly try to serve them from disk.
+location ^~ / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
+    proxy_request_buffering off;
+    proxy_buffering off;
+    proxy_max_temp_file_size 0;
+    proxy_read_timeout 120s;
+    proxy_send_timeout 60s;
+}

@@ -46,6 +46,8 @@ OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 uvicorn backend.app:app --host 127.0.0.
 
 ## Docker 部署准备
 
+使用宝塔部署到 `rice.chazjing.icu` 时，按[宝塔一步步部署教程](docs/BAOTA_RICE.md)操作，包含 Windows 下载、新目录、DNS、Docker、SSL 和反向代理配置。
+
 ```bash
 cp .env.example .env
 # 在 .env 中填写 RICE_ACCESS_TOKEN（如需限制访问）

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173f32">
+  <meta name="description" content="拍一张照片，数清每一粒。水稻种子自动识别与人工复核工具。">
+  <title>稻粒 · 水稻种子计数</title>
+  <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/style.css">
+  <script type="module" src="/assets/app.mjs"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="brand"><img src="/assets/icon.svg" alt="" width="38" height="38"><span>稻粒<small>RICE COUNTER</small></span></a>
+    <span class="privacy-badge"><span class="status-dot"></span>照片仅用于本次识别</span>
+  </header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">从一张照片，到每一粒</p><h1>数清种子，<span>心中有数。</span></h1><p class="lead">拍照识别，红点标记；补上遗漏，删去误点。<br class="desktop-break">最后的红点数，就是种子数。</p></div>
+      <div class="grain-art" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><i>每一粒，都算数</i></div>
+    </section>
+    <div class="workspace">
+      <section class="photo-panel" aria-label="照片与红点标记">
+        <div class="panel-heading"><div><span class="step">01</span><h2>照片工作台</h2></div><span id="photoName" class="filename">还没有照片</span></div>
+        <div id="emptyState" class="empty-state">
+          <div class="photo-icon" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none"><rect x="9" y="17" width="46" height="34" rx="8" stroke="currentColor" stroke-width="2"/><path d="m22 17 4-7h12l4 7" stroke="currentColor" stroke-width="2"/><circle cx="32" cy="33" r="10" stroke="currentColor" stroke-width="2"/><path d="M46 24h2" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></div>
+          <h3>放入一张种子照片</h3><p>白纸铺底，种子摊开，尽量均匀照明。<br>选择照片后，点击右侧「开始识别」。</p>
+          <div class="upload-actions"><button class="primary" id="chooseEmpty">选择照片 <span>↗</span></button><button class="secondary" id="cameraEmpty">拍一张</button></div>
+          <span class="format-note">JPG / PNG / WebP · 最大 20 MB · 2400 万像素</span>
+        </div>
+        <div id="editor" hidden>
+          <div class="editor-toolbar" role="group" aria-label="标记工具">
+            <div class="mode-group"><button data-mode="edit" class="selected" aria-pressed="true" title="点击空白补点，点击红点删除">± 修正</button><button data-mode="add" aria-pressed="false">＋ 补点</button><button data-mode="erase" aria-pressed="false">− 删点</button><button data-mode="pan" aria-pressed="false">↔ 移动</button></div>
+            <button id="undoButton" title="撤销 Ctrl / ⌘ + Z" disabled>↶ 撤销</button>
+          </div>
+          <div class="viewport" id="viewport"><div id="canvasStage"><canvas id="photoCanvas" aria-label="种子照片。可点击添加或删除红点；也可使用下方精确坐标输入。"></canvas></div></div>
+          <div class="view-toolbar"><label><input id="showDots" type="checkbox" checked> 显示红点</label><div class="zoom-group"><button id="zoomOut" aria-label="缩小">−</button><output id="zoomLabel">100%</output><button id="zoomIn" aria-label="放大">＋</button><button id="fitButton">适应</button></div></div>
+          <p id="editHint" class="editor-hint">点击空白补点，点击红点删点。放大后检查更清楚。</p>
+          <div id="recentPhotos" class="recent-photos" aria-label="最近两张照片"></div>
+        </div>
+        <div class="panel-footer"><span>只在当前页面保留最近两张照片</span><div><button id="chooseButton" class="text-button">换一张</button><button id="cameraButton" class="text-button">拍照</button><button id="clearButton" class="text-button" disabled>清空</button></div></div>
+      </section>
+      <aside class="side-panel">
+        <section class="result-card">
+          <div class="panel-heading"><div><span class="step">02</span><h2>计数结果</h2></div><span id="resultState" class="state-tag">等待照片</span></div>
+          <div class="count-display"><strong id="count">—</strong><span>粒</span></div>
+          <p id="countSubtitle" class="count-subtitle">以当前照片上的红点总数为准</p>
+          <div class="result-metrics"><div><span>自动标点</span><strong id="autoCount">—</strong></div><div><span>人工净调整</span><strong id="manualCount">—</strong></div><div><span>待复核</span><strong id="reviewCount">—</strong></div></div>
+          <button id="detectButton" class="primary detect-button" disabled><span class="button-label">开始识别</span><span class="button-arrow">→</span></button>
+          <button id="cancelButton" class="text-button cancel-button" hidden>取消本次请求</button>
+          <p id="statusMessage" class="status-message" role="status" aria-live="polite">选好照片，就可以开始了。</p>
+          <div id="warnings" class="warnings" hidden></div>
+          <button id="confirmButton" class="text-button confirm-button" disabled>我已检查，确认这个数量</button>
+          <div class="export-actions"><button id="exportImage" class="secondary" disabled>导出标记图</button><button id="exportData" class="secondary" disabled>导出计数数据</button></div>
+        </section>
+        <section class="settings-card">
+          <details open><summary>识别设置<span>⌄</span></summary><div class="settings-content">
+            <label class="field">背景<select id="background"><option value="paper">白纸背景 · 阴影校正</option><option value="auto">自动判断背景</option><option value="dark">深色背景</option><option value="light">浅色背景 · 普通模式</option></select></label>
+            <label class="field">粘连分离<select id="split"><option value="balanced">适度分离（推荐）</option><option value="strong">加强分离</option><option value="off">关闭分离</option></select></label>
+            <label class="field" for="sensitivity">识别灵敏度 <output id="sensitivityValue">0</output></label><input id="sensitivity" type="range" min="-40" max="40" value="0" step="5"><p class="field-help">漏点较多时调高；背景误点较多时调低。</p>
+            <label class="field">最小种子面积<select id="minArea"><option value="0.0005">很小 · 适合种子较多</option><option value="0.002" selected>标准 · 推荐</option><option value="0.008">较大 · 排除小噪点</option><option value="0.03">很大 · 近距离拍摄</option></select></label>
+            <p class="field-help">调整设置后重新识别。重新识别会替换本张照片的人工修改。</p>
+          </div></details>
+        </section>
+        <section class="tips-card"><span class="tip-symbol">✧</span><div><h3>拍得好，数得准</h3><p>种子平铺、不堆叠，纸面留出边缘。避开手机投下的深阴影；黄色外圈的红点优先检查。</p><p>自动结果需要复核，完全被遮挡的种子无法从单张照片中识别。</p></div></section>
+        <details class="advanced"><summary>访问口令与精确修正</summary><label class="field">服务器访问口令（如有）<input id="accessToken" type="password" autocomplete="off" placeholder="未配置口令可留空"></label><p class="field-help">口令仅保留在当前页面。</p><div class="coordinate-row"><label>X<input id="coordinateX" type="number" min="0" step="0.1" placeholder="像素"></label><label>Y<input id="coordinateY" type="number" min="0" step="0.1" placeholder="像素"></label><button id="coordinateAdd" class="secondary" disabled>补点</button></div><label class="field">删除红点编号<input id="pointId" type="number" min="1" step="1" placeholder="导出数据中的编号"></label><button id="deleteById" class="secondary" disabled>删除指定点</button></details>
+      </aside>
+    </div>
+    <footer class="page-footer"><span>稻粒 / RICE COUNTER</span><p>照片在服务器内存中完成识别，处理结束后清理；页面关闭后不保留照片。</p></footer>
+  </main>
+  <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+  <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
+  <dialog id="replaceDialog"><h3>重新识别这张照片？</h3><p>新的自动红点会替换当前标记。可以先导出结果，保留你的人工修改。</p><form method="dialog"><button class="secondary" value="cancel">保留当前标记</button><button class="primary" value="confirm">重新识别</button></form></dialog>
+</body>
+</html>

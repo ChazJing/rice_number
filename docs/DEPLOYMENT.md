@@ -8,6 +8,8 @@
 
 GitHub 只保存源代码，不必开启 GitHub Pages，也不需要微信小程序资质。
 
+中国大陆服务器若访问 Docker Hub 超时，可按[大陆网络下载源配置](BAOTA_RICE.md#中国大陆网络的项目级下载源)在本项目内指定基础镜像和 Python 包源，不需要调整全局 Docker 服务。
+
 ## Docker
 
 服务器安装 Docker Engine 和 Compose 插件后，在仓库目录执行：

@@ -266,7 +266,47 @@ docker compose -p rice_number up -d --build
 
 这只能消除额外的前端镜像下载；`python:3.12-slim` 基础镜像仍需从 Docker Hub 拉取。如果下一次日志在 `python:3.12-slim` 处访问 `registry-1.docker.io` 超时，说明基础镜像下载也被服务器网络阻断，需要使用可信的可达镜像渠道或离线导入，不能只靠重试或修改 Compose 权限解决。
 
-这种情况下，不要为本项目随意修改全局 Docker 配置或重启 Docker 守护进程，以免影响同机已有服务。先保留具体报错，再选择项目级镜像来源或离线部署方式。
+这种情况下，使用下面的项目级配置；无需修改全局 Docker 配置或重启 Docker 守护进程。
+
+### 中国大陆网络的项目级下载源
+
+Docker 基础镜像和 Python 依赖是两种不同的下载，需要分别配置。这里使用 DaoCloud 公开镜像服务和清华大学 PyPI 镜像。镜像的实际可达性取决于服务器网络，不承诺某个公共服务一直可用。
+
+先在服务器验证基础镜像能否下载：
+
+```bash
+docker pull m.daocloud.io/docker.io/library/python:3.12-slim
+```
+
+看到下载完成（例如 `Downloaded newer image` 或 `Image is up to date`）后，再继续构建。此操作拉取一个镜像，不启动或重启已有容器。
+
+最新版 `Dockerfile` 和 `compose.yaml` 支持从本项目的 `.env` 设置下载源。保留原来的 `RICE_ACCESS_TOKEN` 行，增加：
+
+```dotenv
+RICE_PYTHON_IMAGE=m.daocloud.io/docker.io/library/python:3.12-slim
+RICE_PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+之后运行：
+
+```bash
+cd /www/wwwroot/rice.chazjing.icu/app
+docker compose -p rice_number up -d --build
+```
+
+**已经上传旧版文件的情况**：如果服务器的 Dockerfile 仍是 `FROM python:3.12-slim` 开头、Compose 的 `build` 仍是 `build: .`，仅添加 `.env` 变量不会起作用。可以更新这两个文件；也可以直接对旧版 Dockerfile 做以下修改，无须重新上传整个项目：
+
+```bash
+cd /www/wwwroot/rice.chazjing.icu/app
+cp -n Dockerfile Dockerfile.before-cn-mirrors
+sed -i 's|^FROM python:3.12-slim$|FROM m.daocloud.io/docker.io/library/python:3.12-slim|' Dockerfile
+sed -i 's|pip install --no-cache-dir -r requirements.txt|pip install --no-cache-dir --index-url https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt|' Dockerfile
+docker compose -p rice_number up -d --build
+```
+
+公共镜像无法访问时，可使用自己有权限的可信镜像仓库，或从可联网机器导出镜像并离线导入到服务器。不要使用不明镜像站或关闭 HTTPS 证书验证。若采用非容器 Python 部署，当前项目应使用 Python 3.12 的独立环境，避免修改同机已有应用的 Python 依赖。
+
+来源：[DaoCloud 镜像使用说明](https://github.com/DaoCloud/public-image-mirror)、[清华 PyPI 镜像说明](https://mirror.tuna.tsinghua.edu.cn/help/pypi/)。
 
 ## 官方参考
 

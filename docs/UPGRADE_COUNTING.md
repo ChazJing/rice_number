@@ -6,8 +6,9 @@
 
 下载仓库最新 ZIP：https://github.com/ChazJing/rice_number/archive/refs/heads/main.zip
 
-解压后用 Xftp 覆盖服务器 `/www/wwwroot/rice.chazjing.icu/app/` 内这四个文件，保持目录结构：
+解压后用 Xftp 覆盖服务器 `/www/wwwroot/rice.chazjing.icu/app/` 内这五个文件，保持目录结构：
 
+- `backend/app.py`
 - `backend/detection.py`
 - `frontend/index.html`
 - `frontend/app.mjs`
@@ -20,7 +21,30 @@ systemctl restart rice-number.service
 curl -fsS http://127.0.0.1:8000/api/health
 ```
 
-健康检查返回 `"status":"ok"` 后，关闭微信内的网站页面，再重新打开。
+`restart` 通常没有输出。继续执行：
+
+```bash
+systemctl status rice-number.service --no-pager -l
+```
+
+看到 `active (running)` 表示运行正常。若显示 `failed`，查看原因：
+
+```bash
+journalctl -u rice-number.service -n 50 --no-pager
+```
+
+这些操作只重启本项目的服务，不重启整台服务器。健康检查返回 `"status":"ok"` 后，关闭微信内的网站页面，再重新打开。
+
+## 选择白纸范围
+
+如果照片拍到了桌面或衣服：
+
+1. 选照片后点“范围”。
+2. 在照片上依次点击白纸区域的两个对角，框住全部种子，避开桌面、衣服和其他杂物。
+3. 看到蓝框后点击“开始识别”。选范围不会立刻改动已有红点；须重新识别才能更新结果。
+4. 框外不参与自动计数，计数后继续检查漏点、重复点。点“恢复全图”可取消范围，再重新识别。
+
+范围选择只记录坐标。服务器执行识别，图片仍在处理结束后从内存释放，不保存图片文件。
 
 ## 使用变化
 
@@ -40,3 +64,21 @@ curl -fsS http://127.0.0.1:8000/api/health
 如果真实照片上修正量仍大，下一步是训练水稻专用的检测、实例分割或点定位模型。训练可在其他有 GPU 的环境完成；两核服务器只做轻量模型推理，具体速度需用真实照片测试。通用模型不会自动学会稻粒类别。
 
 可参考稻穗点定位项目 [GrainCountingP2PNet](https://github.com/UTokyo-FieldPhenomics-Lab/GrainCountingP2PNet)。该项目研究稻穗场景，不能假定它的预训练模型适合白纸上散放的种子；引入代码或权重前还需确认其授权条件。本次更新没有引入该项目的代码或权重。
+
+## 2026-10-13 真实样本检查
+
+已在本地读取两张 2304×4096 的 JPG 原图，照片和分析结果保留在被 Git 忽略的 `work/private-photos/`，不提交仓库。
+
+- 较少的一张包含黑色稻粒、阴影与粘连。用户表示“应该是98粒”，该数尚未逐粒确认。
+- 最新默认参数：全图返回105点；选择上方白纸范围（归一化坐标0,0,1,0.85）后返回94点。相对暂定98粒的总数差为4.08%。
+- 图像检查仍能看到漏点与重复点；不能由总数差推断逐粒准确率，也不能据此保证其他照片误差低于5%。
+- 较多的一张：全图248点；选择白纸范围（0.03,0.07,0.97,0.81）后252点。人工数量未知，未计算误差。
+- 本地单次观察耗时约2～4秒；用户服务器速度需要实际测量。不同范围改变背景估计及分割，因此仅排除框外点并不等同于对范围重新识别。
+
+可重复运行本地原图评估：
+
+```bash
+python tests/evaluate_photos.py work/private-photos/example.jpg --roi 0 0 1 0.85
+```
+
+人工确定真实数量后，可加 `--reference-count 98` 输出总数误差。程序不写图片，不上传到外部服务。

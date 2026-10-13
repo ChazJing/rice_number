@@ -31,6 +31,7 @@ class Options:
     sensitivity: float = 0.0
     min_area_percent: float = 0.002
     split: str = "balanced"
+    roi: tuple[float, float, float, float] | None = None
 
 
 def otsu(values: np.ndarray) -> float:
@@ -74,14 +75,18 @@ def foreground(rgb: np.ndarray, options: Options) -> tuple[np.ndarray, list[str]
         darkness = np.clip(255 * (illumination - gray) / np.maximum(illumination, 25), 0, 255)
         # Rice husks often retain warm color even inside an achromatic shadow.
         chroma = (pixels.max(axis=2) - pixels.min(axis=2)) * 1.3
-        contrast = np.maximum(darkness, chroma).clip(0, 255)
+        # Soft gray shadows adjoining a warm husk should not bridge separate
+        # grains. Deep achromatic grains still have strong darkness contrast.
+        contrast = np.maximum(darkness * 0.6, chroma).clip(0, 255)
     elif options.background == "auto":
         contrast = np.clip(np.linalg.norm(pixels - background, axis=2), 0, 255)
     else:
         gray = pixels @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
         contrast = gray if options.background == "dark" else 255 - gray
     contrast = ndi.median_filter(contrast, size=3)
-    threshold = max(12, otsu(contrast) - options.sensitivity)
+    # Leave a margin above Otsu's boundary on paper to avoid including the
+    # faint edge shadows that form bridges between otherwise separate grains.
+    threshold = max(12, otsu(contrast) + (8 if paper else 0) - options.sensitivity)
     mask = contrast > threshold
     mask = ndi.binary_opening(mask, structure=np.ones((3, 3), dtype=bool))
     mask = ndi.binary_fill_holes(mask)
@@ -109,6 +114,8 @@ def split_region(region: np.ndarray, mode: str, seed_area: float | None = None) 
     # broad group of parallel touching grains can be almost convex, so shape
     # alone must not exclude it from examination. Area alone never sets count.
     oversized = seed_area is not None and region.sum() > seed_area * 1.65
+    if seed_area is not None and region.sum() < seed_area * (1.45 if mode == "balanced" else 1.25):
+        return [region], solidity(region) < 0.90
     limit = 0.94 if mode == "balanced" else 0.975
     if not oversized and solidity(region) >= limit:
         return [region], False
@@ -156,6 +163,17 @@ def split_region(region: np.ndarray, mode: str, seed_area: float | None = None) 
     # Masked watershed with FIFO plateau handling prevents a slightly higher
     # distance peak from swallowing the whole touching component.
     labels = watershed(-smooth, markers, mask=region)
+    if seed_area is not None:
+        # Small watershed fragments were being counted as complete grains.
+        # Remove the fragment's marker, then let adjacent regions reclaim it.
+        while np.count_nonzero(markers) > 1:
+            identifiers = np.unique(markers[markers > 0])
+            areas = [(int((labels == index).sum()), index) for index in identifiers]
+            area, identifier = min(areas)
+            if area >= seed_area * 0.38:
+                break
+            markers[markers == identifier] = 0
+            labels = watershed(-smooth, markers, mask=region)
     parts = [(labels == index) & region for index in range(1, number + 1)]
     parts = [part for part in parts if part.sum() >= max(8, region.sum() * 0.08)]
     if oversized and any(part.sum() < seed_area * 0.28 for part in parts):
@@ -194,6 +212,17 @@ def detect_image(payload: bytes | bytearray, options: Options = Options()) -> di
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as exc:
         raise ImageError("无法读取照片，请重新选择完整的 JPG、PNG 或 WebP 图片。") from exc
 
+    working_height, working_width = rgb.shape[:2]
+    offset_x = offset_y = 0
+    if options.roi is not None:
+        left, top, right, bottom = options.roi
+        if not all(np.isfinite(options.roi)) or not (0 <= left < right <= 1 and 0 <= top < bottom <= 1):
+            raise ImageError("识别范围无效，请重新选择范围。")
+        offset_x, offset_y = int(left * working_width), int(top * working_height)
+        end_x, end_y = int(np.ceil(right * working_width)), int(np.ceil(bottom * working_height))
+        if end_x - offset_x < 16 or end_y - offset_y < 16:
+            raise ImageError("识别范围太小，请包含全部待计数种子。")
+        rgb = rgb[offset_y:end_y, offset_x:end_x]
     mask, notes = foreground(rgb, options)
     labels, _ = ndi.label(mask)
     slices = ndi.find_objects(labels)
@@ -219,7 +248,7 @@ def detect_image(payload: bytes | bytearray, options: Options = Options()) -> di
             seed_area = float(np.median(similar))
     points = []
     rejected = 0
-    sy, sx = height / mask.shape[0], width / mask.shape[1]
+    sy, sx = height / working_height, width / working_width
     for label, bounding in enumerate(slices, 1):
         if bounding is None:
             continue
@@ -244,8 +273,8 @@ def detect_image(payload: bytes | bytearray, options: Options = Options()) -> di
                 cy, cx = coordinates[np.argmin(np.sum((coordinates - [cy, cx]) ** 2, axis=1))]
             points.append({
                 "id": f"auto-{len(points) + 1}",
-                "x": round(float((bounding[1].start + cx - 1 + 0.5) * sx), 2),
-                "y": round(float((bounding[0].start + cy - 1 + 0.5) * sy), 2),
+                "x": round(float((offset_x + bounding[1].start + cx - 1 + 0.5) * sx), 2),
+                "y": round(float((offset_y + bounding[0].start + cy - 1 + 0.5) * sy), 2),
                 "source": "auto",
                 "review": bool(uncertain or edge),
             })
@@ -253,6 +282,8 @@ def detect_image(payload: bytes | bytearray, options: Options = Options()) -> di
                 raise ImageError("候选种子过多，请分批拍照，或增大“最小种子面积”以排除背景噪点。")
     if rejected:
         notes.append("已排除过大的连通区域，可能有大面积粘连或背景误识别，请人工检查。")
+    if options.roi is not None:
+        notes.append("本次仅识别选定范围；范围外的种子不计入自动结果，请确认没有漏选。")
     if not points:
         notes.append("没有找到种子。请检查背景模式、照片清晰度，或降低最小种子面积；也可以手动补点。")
     elif any(point["review"] for point in points):
@@ -260,6 +291,7 @@ def detect_image(payload: bytes | bytearray, options: Options = Options()) -> di
     return {
         "width": width, "height": height, "points": points, "count": len(points),
         "review_count": sum(point["review"] for point in points), "warnings": notes,
-        "method": "illumination-segmentation-watershed-v2",
+        "method": "illumination-segmentation-watershed-v3",
+        "roi": list(options.roi) if options.roi is not None else None,
         "working_width": int(mask.shape[1]), "working_height": int(mask.shape[0]),
     }

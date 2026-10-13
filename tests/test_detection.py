@@ -107,6 +107,22 @@ class DetectionTests(unittest.TestCase):
         ImageDraw.Draw(image).ellipse((700, 500, 770, 580), fill=(27, 27, 27))
         self.assertEqual(detect_image(encode(image))["count"], 21)
 
+    def test_selected_range_excludes_outside_and_keeps_original_coordinates(self):
+        image, positions = rice_scene()
+        result = detect_image(encode(image), Options(roi=(.25, 0, .75, 1)))
+        self.assertEqual((result["width"], result["height"]), (800, 600))
+        self.assertEqual(result["count"], 12)
+        self.assertTrue(all(200 <= point["x"] <= 600 for point in result["points"]))
+        for point in result["points"]:
+            self.assertLess(min(abs(point["x"] - x) + abs(point["y"] - y) for x, y in positions), 3)
+        self.assertEqual(result["roi"], [.25, 0, .75, 1])
+
+    def test_selected_range_rejects_empty_invalid_and_tiny(self):
+        image, _ = rice_scene()
+        for roi in [(0, 0, 0, 1), (0, 0, 2, 1), (0, 0, .001, .001), (0, 0, float("nan"), 1)]:
+            with self.subTest(roi=roi), self.assertRaises(ImageError):
+                detect_image(encode(image), Options(roi=roi))
+
     def test_exif_rotation_uses_oriented_coordinates(self):
         image = Image.new("RGB", (400, 300), "white")
         ImageDraw.Draw(image).ellipse((80, 30, 100, 90), fill=(184, 144, 60))

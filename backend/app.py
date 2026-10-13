@@ -3,10 +3,12 @@
 import asyncio
 import hashlib
 import hmac
+import math
 import os
 from pathlib import Path
 import threading
 import time
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -53,11 +55,23 @@ async def detect(
     sensitivity: float = Query(0, ge=-40, le=40),
     min_area_percent: float = Query(0.002, ge=0.0002, le=0.2),
     split: str = Query("balanced", pattern="^(off|balanced|strong)$"),
+    roi: Annotated[str | None, Query(max_length=80)] = None,
 ):
     if ACCESS_TOKEN:
         supplied = request.headers.get("authorization", "").removeprefix("Bearer ")
         if not hmac.compare_digest(hashlib.sha256(supplied.encode()).digest(), hashlib.sha256(ACCESS_TOKEN.encode()).digest()):
             raise HTTPException(401, "请输入正确的访问口令。")
+    selected_roi = None
+    if roi is not None:
+        try:
+            selected_roi = tuple(float(value) for value in roi.split(","))
+            if len(selected_roi) != 4 or not all(math.isfinite(value) for value in selected_roi):
+                raise ValueError
+            left, top, right, bottom = selected_roi
+            if not (0 <= left < right <= 1 and 0 <= top < bottom <= 1):
+                raise ValueError
+        except ValueError:
+            raise HTTPException(422, "识别范围无效，请重新选择范围。") from None
     content_type = request.headers.get("content-type", "").split(";")[0].lower()
     if content_type not in {"application/octet-stream", "image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(415, "请直接上传 JPG、PNG 或 WebP 图片数据。")
@@ -94,7 +108,7 @@ async def detect(
             # browser cannot free them prematurely while CPU work is running.
             def process():
                 try:
-                    return detect_image(payload, Options(background, sensitivity, min_area_percent, split))
+                    return detect_image(payload, Options(background, sensitivity, min_area_percent, split, selected_roi))
                 finally:
                     payload.clear()
                     processing_slot.release()

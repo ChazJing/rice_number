@@ -12,3 +12,6 @@
 .view-toolbar{flex-wrap:wrap}
 .view-toolbar select{min-height:32px;padding:3px 7px;border:1px solid var(--line);color:var(--ink);background:var(--white)}
 @media(max-width:760px){.viewport{overflow:hidden;overscroll-behavior:auto}.view-toolbar .zoom-group{margin-left:auto}}
+
+.range-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 16px 12px;font-size:11px;color:var(--muted)}
+.range-toolbar span{line-height:1.7;flex:1}.range-toolbar button{flex-shrink:0}

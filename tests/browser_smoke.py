@@ -136,6 +136,24 @@ with sync_playwright() as p:
     assert mobile.locator('#count').inner_text() == '20'
     mobile.locator('[data-mode=edit]').click()
     mobile.locator('#fitButton').click()
+    # Selecting a range does not silently change an old count. Re-recognition
+    # restricts counting while coordinates still refer to the full photo.
+    mobile.locator('[data-mode=roi]').click()
+    mobile.locator('#photoCanvas').scroll_into_view_if_needed()
+    box = mobile.locator('#photoCanvas').bounding_box()
+    mobile.touchscreen.tap(box['x'] + box['width']*.25, box['y'] + box['height']*.02)
+    mobile.touchscreen.tap(box['x'] + box['width']*.75, box['y'] + box['height']*.98)
+    assert mobile.locator('#count').inner_text() == '20'
+    assert mobile.locator('#resultState').inner_text() == '请重新识别'
+    assert mobile.locator('#confirmButton').is_disabled()
+    assert mobile.locator('[data-mode=edit]').get_attribute('aria-pressed') == 'true'
+    mobile.locator('#detectButton').click()
+    expect(mobile.locator('#count')).to_have_text('12')
+    assert '框外' in mobile.locator('#rangeHint').inner_text()
+    mobile.locator('#resetRange').click()
+    assert mobile.locator('#count').inner_text() == '12'
+    mobile.locator('#detectButton').click()
+    expect(mobile.locator('#count')).to_have_text('20')
     mobile.screenshot(path=str(folder / 'mobile-result.png'),full_page=True)
     mobile.reload(wait_until='networkidle')
     assert mobile.locator('#count').inner_text() == '—'

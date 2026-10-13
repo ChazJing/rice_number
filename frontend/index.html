@@ -31,12 +31,13 @@
         </div>
         <div id="editor" hidden>
           <div class="editor-toolbar" role="group" aria-label="标记工具">
-            <div class="mode-group"><button data-mode="edit" class="selected" aria-pressed="true" title="点击空白补点，点击红点删除">± 修正</button><button data-mode="add" aria-pressed="false">＋ 补点</button><button data-mode="erase" aria-pressed="false">− 删点</button><button data-mode="pan" aria-pressed="false">↔ 移动</button></div>
+            <div class="mode-group"><button data-mode="edit" class="selected" aria-pressed="true" title="点击空白补点，点击红点删除">± 修正</button><button data-mode="add" aria-pressed="false">＋ 补点</button><button data-mode="erase" aria-pressed="false">− 删点</button><button data-mode="pan" aria-pressed="false">↔ 移动</button><button data-mode="roi" aria-pressed="false" title="依次点击识别范围的两个对角">□ 范围</button></div>
             <button id="undoButton" title="撤销 Ctrl / ⌘ + Z" disabled>↶ 撤销</button>
           </div>
           <div class="viewport" id="viewport"><div id="canvasStage"><div id="canvasSurface"><canvas id="baseCanvas" aria-hidden="true"></canvas><canvas id="photoCanvas" aria-label="种子照片。可点击添加或删除红点；也可使用下方精确坐标输入。"></canvas></div></div></div>
           <div class="view-toolbar"><label><input id="showDots" type="checkbox" checked> 显示红点</label><label>红点大小 <select id="dotSize" aria-label="红点大小"><option value="2" selected>小</option><option value="3">中</option><option value="4.5">大</option></select></label><div class="zoom-group"><button id="zoomOut" aria-label="缩小">−</button><output id="zoomLabel">100%</output><button id="zoomIn" aria-label="放大">＋</button><button id="fitButton">适应</button></div></div>
           <p id="editHint" class="editor-hint">点击空白补点，点击红点删点。上下滑动页面；放大后用“移动”查看照片。</p>
+          <div class="range-toolbar"><span id="rangeHint">识别整张照片；拍到桌面或衣服时，可先选择范围。</span><button id="resetRange" class="text-button">恢复全图</button></div>
           <div id="recentPhotos" class="recent-photos" aria-label="最近两张照片"></div>
         </div>
         <div class="panel-footer"><span>只在当前页面保留最近两张照片</span><div><button id="chooseButton" class="text-button">换一张</button><button id="cameraButton" class="text-button">拍照</button><button id="clearButton" class="text-button" disabled>清空</button></div></div>

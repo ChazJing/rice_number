@@ -72,6 +72,16 @@ class ApiTests(unittest.TestCase):
         for query in ["background=bad", "sensitivity=100", "min_area_percent=0", "split=bad", "sensitivity=nan"]:
             self.assertEqual(self.client.post(f"/api/detect?{query}", content=photo(), headers=self.headers).status_code, 422)
 
+    def test_range_validation_and_count(self):
+        for roi in ["", "0,0,1", "0,0,2,1", "0,0,nan,1", "a,0,1,1", "0,0,inf,1"]:
+            response = self.client.post("/api/detect", params={"roi":roi}, content=photo(), headers=self.headers)
+            self.assertEqual(response.status_code, 422)
+            self.assertFalse(processing_slot.locked())
+        response = self.client.post("/api/detect?roi=0.5,0,1,1", content=photo(), headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 0)
+        self.assertFalse(response.json()["image_retained"])
+
     def test_chunked_upload_limit(self):
         with patch("backend.app.MAX_UPLOAD_BYTES", 10):
             response = self.client.post("/api/detect", content=iter([b"123456", b"789012"]), headers=self.headers)

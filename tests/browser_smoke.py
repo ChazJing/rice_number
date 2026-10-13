@@ -29,6 +29,7 @@ with sync_playwright() as p:
     page.goto(base_url, wait_until='networkidle')
     page.screenshot(path=str(folder / 'desktop-empty.png'), full_page=True)
     page.locator('#fileInput').set_input_files(str(folder / 'rice.png'))
+    expect(page.locator('#photoName')).to_have_text('rice.png')
     page.locator('#detectButton').click()
     expect(page.locator("#count")).to_have_text("20")
     canvas = page.locator('#photoCanvas')
@@ -55,10 +56,12 @@ with sync_playwright() as p:
     image_download.value.save_as(str(folder / 'export.jpg'))
     page.screenshot(path=str(folder / 'desktop-result.png'), full_page=True)
     page.locator('#fileInput').set_input_files(str(folder / 'rice-shadow.png'))
+    expect(page.locator('#photoName')).to_have_text('rice-shadow.png')
     page.locator('#detectButton').click()
     expect(page.locator("#count")).to_have_text("20")
     assert page.locator('#recentPhotos button').count() == 2
     page.locator('#fileInput').set_input_files(str(folder / 'rice-hard-shadow.png'))
+    expect(page.locator('#photoName')).to_have_text('rice-hard-shadow.png')
     assert page.locator('#recentPhotos button').count() == 2
     assert 'rice.png' not in page.locator('#recentPhotos').inner_text()
     page.locator('#detectButton').click()
@@ -85,6 +88,7 @@ with sync_playwright() as p:
     assert mobile.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
     mobile.screenshot(path=str(folder / 'mobile-empty.png'),full_page=True)
     mobile.locator('#fileInput').set_input_files(str(folder / 'rice-shadow.png'))
+    expect(mobile.locator('#photoName')).to_have_text('rice-shadow.png')
     mobile.locator('#detectButton').click()
     expect(mobile.locator("#count")).to_have_text("20")
     assert mobile.evaluate('document.documentElement.scrollWidth <= window.innerWidth')

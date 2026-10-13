@@ -6,6 +6,7 @@ const context = canvas.getContext('2d');
 const viewport = $('viewport');
 let documents = [], current = null, mode = 'edit', zoom = 1, fitScale = 1;
 let busy = false, requestController = null, requestGeneration = 0, loadGeneration = 0;
+let loading = false;
 let pointer = null, message = '选好照片，就可以开始了。', messageError = false;
 let requiresToken = false;
 const hints = {edit:'点击空白补点，点击红点删点。放大后检查更清楚。', add:'点击种子中心补上一个红点。', erase:'点击需要删除的红点。', pan:'拖动照片查看其他区域；也可以用滚动条移动。'};
@@ -39,20 +40,24 @@ function cancelRequest(showMessage = true) {
 
 async function selectFile(file) {
   if (!file) return;
-  const load = ++loadGeneration;
   if (file.size > 20 * 1024 * 1024) return status('照片不能超过 20 MB，请选择较小的照片。', true);
   if (!/\.(jpe?g|png|webp)$/i.test(file.name) && !['image/jpeg','image/png','image/webp'].includes(file.type)) {
     return status('请使用 JPG、PNG 或 WebP。iPhone 可在相机设置中选择“兼容性最佳”。', true);
   }
+  const load = ++loadGeneration;
   const url = URL.createObjectURL(file);
   const image = new Image();
   image.src = url;
+  loading = true;
+  status('正在打开照片，请稍候。');
+  render();
   try {
     await image.decode();
     if (load !== loadGeneration) { URL.revokeObjectURL(url); image.src = ''; return; }
     if (image.naturalWidth * image.naturalHeight > 24_000_000 || Math.min(image.naturalWidth, image.naturalHeight) < 32) {
       throw new Error('请使用不超过 2400 万像素、宽高至少 32 像素的照片。');
     }
+    loading = false;
     cancelRequest(false);
     const doc = createDocument(file, image, url);
     documents = keepRecent(documents, doc, dispose);
@@ -65,7 +70,9 @@ async function selectFile(file) {
   } catch (error) {
     URL.revokeObjectURL(url);
     image.src = '';
-    status(error.message === 'The source image cannot be decoded.' ? '无法显示照片，请重新选择 JPG、PNG 或 WebP。' : error.message, true);
+    if (load === loadGeneration) status(error.message === 'The source image cannot be decoded.' ? '无法显示照片，请重新选择 JPG、PNG 或 WebP。' : error.message, true);
+  } finally {
+    if (load === loadGeneration) { loading = false; render(); }
   }
 }
 
@@ -83,13 +90,13 @@ function render() {
   $('photoName').textContent = loaded ? current.file.name : '还没有照片';
   $('photoName').title = loaded ? current.file.name : '';
   $('clearButton').disabled = !loaded;
-  $('detectButton').disabled = !loaded || busy;
+  $('detectButton').disabled = !loaded || busy || loading;
   $('detectButton').classList.toggle('busy', busy);
-  $('detectButton').querySelector('.button-label').textContent = busy ? '正在上传并识别…' : (current?.result ? '重新识别' : '开始识别');
+  $('detectButton').querySelector('.button-label').textContent = loading ? '正在打开照片…' : busy ? '正在上传并识别…' : (current?.result ? '重新识别' : '开始识别');
   $('cancelButton').hidden = !busy;
-  $('undoButton').disabled = !loaded || busy || !current.history.length;
-  for (const id of ['exportImage','exportData','coordinateAdd','deleteById','confirmButton']) $(id).disabled = !loaded || busy;
-  document.querySelectorAll('[data-mode]').forEach(button => { button.disabled = busy; });
+  $('undoButton').disabled = !loaded || busy || loading || !current.history.length;
+  for (const id of ['exportImage','exportData','coordinateAdd','deleteById','confirmButton']) $(id).disabled = !loaded || busy || loading;
+  document.querySelectorAll('[data-mode]').forEach(button => { button.disabled = busy || loading; });
   $('showDots').disabled = busy;
   const data = loaded ? metrics(current) : null;
   $('count').textContent = loaded ? data.count : '—';
@@ -109,7 +116,7 @@ function render() {
     const thumbnail = document.createElement('img'); thumbnail.src = doc.url; thumbnail.alt = '';
     const label = document.createElement('span'); label.textContent = `${index + 1} · ${doc.file.name}`;
     button.append(thumbnail, label);
-    button.addEventListener('click', () => { if (doc === current) return; cancelRequest(false); current = doc; zoom = 1; status('已切换照片，标记保留。'); render(); fit(); });
+    button.addEventListener('click', () => { if (doc === current) return; ++loadGeneration; loading = false; cancelRequest(false); current = doc; zoom = 1; status('已切换照片，标记保留。'); render(); fit(); });
     $('recentPhotos').append(button);
   });
   $('coordinateX').max = loaded ? current.width - 0.01 : 0;
@@ -181,7 +188,7 @@ document.querySelectorAll('[data-mode]').forEach(button => button.addEventListen
   $('editHint').textContent = hints[mode];
 }));
 canvas.addEventListener('pointerdown', event => {
-  if (!current || busy) return;
+  if (!current || busy || loading) return;
   if (pointer) { pointer = null; return; }
   pointer = {id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, left: viewport.scrollLeft, top: viewport.scrollTop};
   if (mode === 'pan') { canvas.setPointerCapture(event.pointerId); canvas.style.cursor = 'grabbing'; }
@@ -196,7 +203,7 @@ canvas.addEventListener('pointerleave', () => { if (mode !== 'pan') pointer = nu
 canvas.addEventListener('pointerup', event => {
   const start = pointer; pointer = null;
   if (mode === 'pan') { canvas.style.cursor = 'grab'; return; }
-  if (!start || start.id !== event.pointerId || start.moved || !current || busy) return;
+  if (!start || start.id !== event.pointerId || start.moved || !current || busy || loading) return;
   if (!$('showDots').checked) return status('请先打开“显示红点”，再修改标记。', true);
   const rect = canvas.getBoundingClientRect();
   const x = (event.clientX - rect.left) / rect.width * current.width;
@@ -208,7 +215,7 @@ canvas.addEventListener('pointerup', event => {
   if (changed) { status('标记已更新，数量已同步。'); render(); }
 });
 
-function undoEdit() { if (current && !busy && undo(current)) { status('已撤销上一步。'); render(); } }
+function undoEdit() { if (current && !busy && !loading && undo(current)) { status('已撤销上一步。'); render(); } }
 $('undoButton').addEventListener('click', undoEdit);
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName)) { event.preventDefault(); undoEdit(); }
@@ -225,7 +232,7 @@ $('deleteById').addEventListener('click', () => {
 });
 $('sensitivity').addEventListener('input', () => { $('sensitivityValue').value = $('sensitivity').value; });
 $('clearButton').addEventListener('click', () => {
-  ++loadGeneration; cancelRequest(false);
+  ++loadGeneration; loading = false; cancelRequest(false);
   documents.forEach(dispose); documents = []; current = null;
   canvas.width = 1; canvas.height = 1;
   $('fileInput').value = ''; $('cameraInput').value = '';
@@ -240,9 +247,9 @@ function approveReplace() {
 }
 
 $('detectButton').addEventListener('click', async () => {
-  if (!current || busy) return;
+  if (!current || busy || loading) return;
   const doc = current;
-  if (!await approveReplace() || doc !== current || busy) return;
+  if (!await approveReplace() || doc !== current || busy || loading) return;
   if (requiresToken && !$('accessToken').value) { status('服务器设置了访问口令，请在“访问口令与精确修正”中输入。', true); document.querySelector('.advanced').open = true; $('accessToken').focus(); return; }
   busy = true;
   const generation = ++requestGeneration;
@@ -310,7 +317,7 @@ $('confirmButton').addEventListener('click', () => {
 });
 
 window.addEventListener('pagehide', () => {
-  ++loadGeneration; cancelRequest(false); documents.forEach(dispose); documents = []; current = null;
+  ++loadGeneration; loading = false; cancelRequest(false); documents.forEach(dispose); documents = []; current = null;
   $('accessToken').value = ''; $('fileInput').value = ''; $('cameraInput').value = ''; canvas.width = 1; canvas.height = 1;
   render(); // remove thumbnail DOM references even when the browser uses BFCache
 });

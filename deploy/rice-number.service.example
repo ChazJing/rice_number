@@ -1,0 +1,27 @@
+[Unit]
+Description=Rice seed counter
+After=network.target
+
+[Service]
+Type=simple
+User=rice-counter
+Group=rice-counter
+WorkingDirectory=/www/wwwroot/rice.chazjing.icu/app
+EnvironmentFile=-/www/wwwroot/rice.chazjing.icu/app/.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2
+ExecStart=/www/wwwroot/rice.chazjing.icu/app/.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=120
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/www/wwwroot/rice.chazjing.icu/app
+LimitCORE=0
+CPUQuota=200%
+MemoryMax=768M
+
+[Install]
+WantedBy=multi-user.target

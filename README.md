@@ -31,7 +31,7 @@
 
 ## 启动（开发或本机验证）
 
-需要 Python 3.12，建议 Linux x86_64 或 ARM64、至少 1 GB 内存，2 GB 更宽裕。识别速度需在你的两核服务器上实测。
+支持 Python 3.10–3.13，建议 Linux x86_64 或 ARM64、至少 1 GB 内存，2 GB 更宽裕。依赖会为 Python 3.10 选择兼容版本。识别速度需在你的两核服务器上实测。
 
 ```bash
 git clone https://github.com/ChazJing/rice_number.git
@@ -45,6 +45,8 @@ OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 uvicorn backend.app:app --host 127.0.0.
 打开 `http://127.0.0.1:8000`。这只是本机入口。手机访问需要后续配置服务器的域名、反向代理和 HTTPS；不同手机浏览器的拍照入口存在差异，可用“选择照片”作为备用入口。
 
 ## Docker 部署准备
+
+大陆服务器如果 Docker Hub 或公开镜像不可用，可以使用[无需 Docker 镜像的 Python 部署](docs/NATIVE_DEPLOYMENT.md)，仍在服务器上执行识别。
 
 使用宝塔部署到 `rice.chazjing.icu` 时，按[宝塔一步步部署教程](docs/BAOTA_RICE.md)操作，包含 Windows 下载、新目录、DNS、Docker、SSL 和反向代理配置。
 

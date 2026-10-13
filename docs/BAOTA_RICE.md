@@ -306,6 +306,8 @@ docker compose -p rice_number up -d --build
 
 公共镜像无法访问时，可使用自己有权限的可信镜像仓库，或从可联网机器导出镜像并离线导入到服务器。不要使用不明镜像站或关闭 HTTPS 证书验证。若采用非容器 Python 部署，当前项目应使用 Python 3.12 的独立环境，避免修改同机已有应用的 Python 依赖。
 
+Docker Hub 不可达、DaoCloud 也返回 502 时，直接使用[独立 Python 部署教程](NATIVE_DEPLOYMENT.md)，不再依赖容器镜像下载。
+
 来源：[DaoCloud 镜像使用说明](https://github.com/DaoCloud/public-image-mirror)、[清华 PyPI 镜像说明](https://mirror.tuna.tsinghua.edu.cn/help/pypi/)。
 
 ## 官方参考

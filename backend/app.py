@@ -77,12 +77,13 @@ async def detect(
     started = time.monotonic()
     try:
         try:
-            async with asyncio.timeout(UPLOAD_TIMEOUT_SECONDS):
+            async def read_upload():
                 async for chunk in request.stream():
                     if len(payload) + len(chunk) > MAX_UPLOAD_BYTES:
                         raise HTTPException(413, "照片不能超过 20 MB。")
                     payload.extend(chunk)
-        except TimeoutError:
+            await asyncio.wait_for(read_upload(), timeout=UPLOAD_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
             raise HTTPException(408, "照片上传超时，请检查网络后重试。") from None
         except ClientDisconnect:
             raise HTTPException(400, "上传已中断。") from None

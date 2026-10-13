@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from fastapi import HTTPException
 from PIL import Image, ImageDraw
 from starlette.requests import Request
 
@@ -112,6 +113,23 @@ class ApiTests(unittest.TestCase):
 
 
 class CancellationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_slow_upload_times_out_and_releases_slot(self):
+        sent = False
+        async def receive():
+            nonlocal sent
+            if not sent:
+                sent = True
+                return {"type":"http.request", "body":b"partial", "more_body":True}
+            await asyncio.Event().wait()
+        request = Request({"type":"http", "method":"POST", "path":"/api/detect",
+            "headers":[(b"content-type",b"application/octet-stream")]}, receive)
+        with patch("backend.app.UPLOAD_TIMEOUT_SECONDS", .03), patch("backend.app.detect_image") as worker:
+            with self.assertRaises(HTTPException) as failure:
+                await detect(request, "paper", 0, .002, "balanced")
+            self.assertEqual(failure.exception.status_code, 408)
+            worker.assert_not_called()
+        self.assertFalse(processing_slot.locked())
+
     async def test_cancelled_request_does_not_release_live_worker_slot(self):
         entered, finish = threading.Event(), threading.Event()
         retained = []

@@ -35,7 +35,7 @@
             <button id="undoButton" title="撤销 Ctrl / ⌘ + Z" disabled>↶ 撤销</button>
           </div>
           <div class="viewport" id="viewport"><div id="canvasStage"><div id="canvasSurface"><canvas id="baseCanvas" aria-hidden="true"></canvas><canvas id="photoCanvas" aria-label="种子照片。可点击添加或删除红点；也可使用下方精确坐标输入。"></canvas></div></div></div>
-          <div class="view-toolbar"><label><input id="showDots" type="checkbox" checked> 显示红点</label><label>红点大小 <select id="dotSize" aria-label="红点大小"><option value="2" selected>小</option><option value="3">中</option><option value="4.5">大</option></select></label><div class="zoom-group"><button id="zoomOut" aria-label="缩小">−</button><output id="zoomLabel">100%</output><button id="zoomIn" aria-label="放大">＋</button><button id="fitButton">适应</button></div></div>
+          <div class="view-toolbar"><label><input id="showDots" type="checkbox" checked> 显示红点</label><label>红点大小 <select id="dotSize" aria-label="红点大小"><option value="2" selected>小</option><option value="3">中</option><option value="4.5">大</option></select></label><div class="rotation-group"><button id="rotateButton" aria-label="照片向右旋转90度" title="每次向右旋转90°">↻ 旋转</button><output id="rotationLabel">0°</output></div><div class="zoom-group"><button id="zoomOut" aria-label="缩小">−</button><output id="zoomLabel">100%</output><button id="zoomIn" aria-label="放大">＋</button><button id="fitButton">适应</button></div></div>
           <p id="editHint" class="editor-hint">点击空白补点，点击红点删点。上下滑动页面；放大后用“移动”查看照片。</p>
           <div class="range-toolbar"><span id="rangeHint">识别整张照片；拍到桌面或衣服时，可先选择范围。</span><button id="resetRange" class="text-button">恢复全图</button></div>
           <div id="recentPhotos" class="recent-photos" aria-label="最近两张照片"></div>
@@ -65,13 +65,21 @@
           </div></details>
         </section>
         <section class="tips-card"><span class="tip-symbol">✧</span><div><h3>拍得好，数得准</h3><p>种子平铺、不堆叠，纸面留出边缘。避开手机投下的深阴影；黄色外圈的红点优先检查。</p><p>自动结果需要复核，完全被遮挡的种子无法从单张照片中识别。</p></div></section>
-        <details class="advanced"><summary>访问口令与精确修正</summary><label class="field">服务器访问口令（如有）<input id="accessToken" type="password" autocomplete="off" placeholder="未配置口令可留空"></label><p class="field-help">口令仅保留在当前页面。</p><div class="coordinate-row"><label>X<input id="coordinateX" type="number" min="0" step="0.1" placeholder="像素"></label><label>Y<input id="coordinateY" type="number" min="0" step="0.1" placeholder="像素"></label><button id="coordinateAdd" class="secondary" disabled>补点</button></div><label class="field">删除红点编号<input id="pointId" type="number" min="1" step="1" placeholder="导出数据中的编号"></label><button id="deleteById" class="secondary" disabled>删除指定点</button></details>
+        <details class="advanced"><summary>访问口令与精确修正</summary><label class="field">服务器访问口令（如有）<input id="accessToken" type="password" autocomplete="off" placeholder="未配置口令可留空"></label><p class="field-help">口令仅保留在当前页面。</p><div class="coordinate-row"><label>X<input id="coordinateX" type="number" min="0" step="0.1" placeholder="像素"></label><label>Y<input id="coordinateY" type="number" min="0" step="0.1" placeholder="像素"></label><button id="coordinateAdd" class="secondary" disabled>补点</button></div><p class="field-help">X、Y使用原图坐标，旋转不改变坐标。</p><label class="field">删除红点编号<input id="pointId" type="number" min="1" step="1" placeholder="导出数据中的编号"></label><button id="deleteById" class="secondary" disabled>删除指定点</button></details>
       </aside>
     </div>
     <footer class="page-footer"><span>稻粒 / RICE COUNTER</span><p>照片在服务器内存中完成识别，处理结束后清理；页面关闭后不保留照片。</p></footer>
   </main>
   <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
   <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
+  <dialog id="cameraDialog" class="camera-dialog" aria-labelledby="cameraTitle">
+    <div class="camera-heading"><h3 id="cameraTitle">拍摄水稻照片</h3><button id="cameraClose" class="text-button" aria-label="关闭摄像头">✕</button></div>
+    <video id="cameraPreview" autoplay muted playsinline aria-label="摄像头实时预览"></video>
+    <p id="cameraStatus" role="status" aria-live="polite">正在打开摄像头…</p>
+    <label class="camera-device" id="cameraDeviceLabel" hidden>切换摄像头 <select id="cameraDevice" aria-label="选择摄像头"></select></label>
+    <div class="camera-actions"><button id="cameraCapture" class="primary" disabled>拍摄并使用</button><button id="cameraRetry" class="secondary" hidden>重新打开</button><button id="cameraFallback" class="secondary">系统拍照 / 选图</button></div>
+    <p class="camera-help">把种子放在白纸上，等预览清晰后再拍摄。关闭或拍摄后会释放摄像头。</p>
+  </dialog>
   <dialog id="replaceDialog"><h3>重新识别这张照片？</h3><p>新的自动红点会替换当前标记。可以先导出结果，保留你的人工修改。</p><form method="dialog"><button class="secondary" value="cancel">保留当前标记</button><button class="primary" value="confirm">重新识别</button></form></dialog>
 </body>
 </html>

@@ -6,12 +6,14 @@
 
 下载仓库最新 ZIP：https://github.com/ChazJing/rice_number/archive/refs/heads/main.zip
 
-解压后用 Xftp 覆盖服务器 `/www/wwwroot/rice.chazjing.icu/app/` 内这五个文件，保持目录结构：
+解压后用 Xftp 覆盖服务器 `/www/wwwroot/rice.chazjing.icu/app/` 内这七个文件，保持目录结构：
 
 - `backend/app.py`
 - `backend/detection.py`
 - `frontend/index.html`
 - `frontend/app.mjs`
+- `frontend/camera.mjs`
+- `frontend/view.mjs`
 - `frontend/style.css`
 
 不要修改 `.env`。随后在 Xshell 执行：

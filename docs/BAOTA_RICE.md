@@ -254,6 +254,20 @@ docker compose -p rice_number logs --tail 50
 | 429 | 一次只处理一张；等当前计算完成 |
 | 构建下载失败 | 镜像仓库或 Python 包源的网络，先保留错误信息 |
 
+### Docker Hub 超时
+
+如果日志在 `docker-image://docker.io/docker/dockerfile:1` 处超时，这是较早版本 Dockerfile 第一行 `# syntax=docker/dockerfile:1` 引发的额外构建前端下载。最新版已移除这一行，使用 Docker 自带的 BuildKit 前端。旧文件可以在本项目目录中修正：
+
+```bash
+cd /www/wwwroot/rice.chazjing.icu/app
+sed -i '\|^# syntax=docker/dockerfile:1$|d' Dockerfile
+docker compose -p rice_number up -d --build
+```
+
+这只能消除额外的前端镜像下载；`python:3.12-slim` 基础镜像仍需从 Docker Hub 拉取。如果下一次日志在 `python:3.12-slim` 处访问 `registry-1.docker.io` 超时，说明基础镜像下载也被服务器网络阻断，需要使用可信的可达镜像渠道或离线导入，不能只靠重试或修改 Compose 权限解决。
+
+这种情况下，不要为本项目随意修改全局 Docker 配置或重启 Docker 守护进程，以免影响同机已有服务。先保留具体报错，再选择项目级镜像来源或离线部署方式。
+
 ## 官方参考
 
 - [宝塔面板新手指南](https://docs.bt.cn/landing/getting-started/)

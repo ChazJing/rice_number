@@ -4,3 +4,11 @@
 .photo-panel,.side-panel{min-width:0}.viewport{width:100%}
 .confirm-button{display:block;margin:4px auto;color:#52724d}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* Separate photo and marker layers keep edits inexpensive on phones. */
+#canvasSurface{position:relative;flex-shrink:0;box-shadow:0 2px 14px #1e2d1b20}
+#baseCanvas{display:block;pointer-events:none}
+#photoCanvas{position:absolute;left:0;top:0;box-shadow:none;touch-action:pan-y pinch-zoom}
+.view-toolbar{flex-wrap:wrap}
+.view-toolbar select{min-height:32px;padding:3px 7px;border:1px solid var(--line);color:var(--ink);background:var(--white)}
+@media(max-width:760px){.viewport{overflow:hidden;overscroll-behavior:auto}.view-toolbar .zoom-group{margin-left:auto}}

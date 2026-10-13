@@ -4,12 +4,14 @@ const $ = id => document.getElementById(id);
 const canvas = $('photoCanvas');
 const context = canvas.getContext('2d');
 const viewport = $('viewport');
+const baseCanvas = $('baseCanvas'), baseContext = baseCanvas.getContext('2d');
+let baseDocument = null;
 let documents = [], current = null, mode = 'edit', zoom = 1, fitScale = 1;
 let busy = false, requestController = null, requestGeneration = 0, loadGeneration = 0;
 let loading = false;
 let pointer = null, message = '选好照片，就可以开始了。', messageError = false;
 let requiresToken = false;
-const hints = {edit:'点击空白补点，点击红点删点。放大后检查更清楚。', add:'点击种子中心补上一个红点。', erase:'点击需要删除的红点。', pan:'拖动照片查看其他区域；也可以用滚动条移动。'};
+const hints = {edit:'点击空白补点，点击红点删点。上下滑动页面；放大后用“移动”查看照片。', add:'点击种子中心补上一个红点。', erase:'点击需要删除的红点。', pan:'拖动照片查看其他区域；也可以用滚动条移动。'};
 
 function options() {
   return {background: $('background').value, sensitivity: Number($('sensitivity').value),
@@ -139,16 +141,29 @@ function draw() {
   const scale = fitScale * zoom;
   const visibleWidth = current.width * scale;
   const visibleHeight = current.height * scale;
-  canvas.style.width = `${visibleWidth}px`;
-  canvas.style.height = `${visibleHeight}px`;
+  $('canvasSurface').style.width = `${visibleWidth}px`;
+  $('canvasSurface').style.height = `${visibleHeight}px`;
+  canvas.style.width = baseCanvas.style.width = `${visibleWidth}px`;
+  canvas.style.height = baseCanvas.style.height = `${visibleHeight}px`;
   // Bound display backing store; full-resolution input remains available for
   // recognition/export, while displaying the page uses no model inference.
   const resolution = Math.min(window.devicePixelRatio || 1, 2, 2600 / Math.max(visibleWidth, visibleHeight));
-  canvas.width = Math.max(1, Math.round(visibleWidth * resolution));
-  canvas.height = Math.max(1, Math.round(visibleHeight * resolution));
-  context.setTransform(canvas.width / current.width, 0, 0, canvas.height / current.height, 0, 0);
-  context.drawImage(current.image, 0, 0, current.width, current.height);
-  if ($('showDots').checked) drawPoints(context, current.points, 4.5 / scale, false);
+  const width = Math.max(1, Math.round(visibleWidth * resolution));
+  const height = Math.max(1, Math.round(visibleHeight * resolution));
+  // Keep the photo in a separate cached layer: editing dots must not redraw
+  // the source photo or reallocate its canvas backing store on every tap.
+  if (baseDocument !== current || baseCanvas.width !== width || baseCanvas.height !== height) {
+    baseCanvas.width = width; baseCanvas.height = height;
+    baseContext.setTransform(width / current.width, 0, 0, height / current.height, 0, 0);
+    baseContext.drawImage(current.image, 0, 0, current.width, current.height);
+    baseDocument = current;
+  }
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, width, height);
+  context.setTransform(width / current.width, 0, 0, height / current.height, 0, 0);
+  if ($('showDots').checked) drawPoints(context, current.points, Number($('dotSize').value) / scale, false);
   $('zoomLabel').textContent = `${Math.round(zoom * 100)}%`;
   $('zoomOut').disabled = zoom <= 1;
   $('zoomIn').disabled = zoom >= 10;
@@ -178,13 +193,14 @@ $('zoomIn').addEventListener('click', () => setZoom(zoom * 1.5));
 $('zoomOut').addEventListener('click', () => setZoom(zoom / 1.5));
 $('fitButton').addEventListener('click', () => { zoom = 1; fit(); });
 $('showDots').addEventListener('change', draw);
+$('dotSize').addEventListener('change', draw);
 new ResizeObserver(() => { if (current) { fitScale = Math.max(.001, Math.min((viewport.clientWidth - 32) / current.width, (viewport.clientHeight - 32) / current.height)); draw(); } }).observe(viewport);
 
 document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => {
   mode = button.dataset.mode;
   document.querySelectorAll('[data-mode]').forEach(item => { const active = item.dataset.mode === mode; item.classList.toggle('selected', active); item.setAttribute('aria-pressed', String(active)); });
   canvas.style.cursor = mode === 'pan' ? 'grab' : 'crosshair';
-  canvas.style.touchAction = mode === 'pan' ? 'none' : 'pan-x pan-y';
+  canvas.style.touchAction = mode === 'pan' ? 'none' : 'pan-y pinch-zoom';
   $('editHint').textContent = hints[mode];
 }));
 canvas.addEventListener('pointerdown', event => {
@@ -208,7 +224,7 @@ canvas.addEventListener('pointerup', event => {
   const rect = canvas.getBoundingClientRect();
   const x = (event.clientX - rect.left) / rect.width * current.width;
   const y = (event.clientY - rect.top) / rect.height * current.height;
-  const index = nearestPoint(current, x, y, 13 / (fitScale * zoom));
+  const index = nearestPoint(current, x, y, (event.pointerType === 'touch' ? 10 : 7) / (fitScale * zoom));
   let changed = false;
   if ((mode === 'edit' || mode === 'erase') && index >= 0) changed = deletePoint(current, index);
   else if (mode !== 'erase') changed = addPoint(current, x, y);
@@ -234,7 +250,7 @@ $('sensitivity').addEventListener('input', () => { $('sensitivityValue').value =
 $('clearButton').addEventListener('click', () => {
   ++loadGeneration; loading = false; cancelRequest(false);
   documents.forEach(dispose); documents = []; current = null;
-  canvas.width = 1; canvas.height = 1;
+  canvas.width = 1; canvas.height = 1; baseCanvas.width = 1; baseCanvas.height = 1; baseDocument = null;
   $('fileInput').value = ''; $('cameraInput').value = '';
   status('照片和标记已从当前页面清空。'); render();
 });
@@ -303,7 +319,7 @@ $('exportImage').addEventListener('click', () => {
   const ctx = output.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, output.width, output.height);
   ctx.save(); ctx.scale(scale, scale); ctx.drawImage(doc.image, 0, 0);
-  drawPoints(ctx, doc.points, Math.max(3, Math.max(doc.width, doc.height) / 450), false); ctx.restore();
+  drawPoints(ctx, doc.points, Math.max(2, Math.max(doc.width, doc.height) / 900) * Number($('dotSize').value) / 2, false); ctx.restore();
   ctx.fillStyle = '#173f32'; ctx.fillRect(0, output.height - footer, output.width, footer);
   ctx.fillStyle = '#fff'; ctx.font = `${Math.min(22, Math.max(10, output.width / 22))}px sans-serif`;
   ctx.fillText(`稻粒  ${doc.points.length} 粒 · ${doc.confirmed ? '已人工确认' : '请复核'}`, 14, output.height - 20);
@@ -318,7 +334,7 @@ $('confirmButton').addEventListener('click', () => {
 
 window.addEventListener('pagehide', () => {
   ++loadGeneration; loading = false; cancelRequest(false); documents.forEach(dispose); documents = []; current = null;
-  $('accessToken').value = ''; $('fileInput').value = ''; $('cameraInput').value = ''; canvas.width = 1; canvas.height = 1;
+  $('accessToken').value = ''; $('fileInput').value = ''; $('cameraInput').value = ''; canvas.width = 1; canvas.height = 1; baseCanvas.width = 1; baseCanvas.height = 1; baseDocument = null;
   render(); // remove thumbnail DOM references even when the browser uses BFCache
 });
 window.addEventListener('pageshow', event => { if (event.persisted) { status('页面已恢复，请重新选择照片。'); render(); } });

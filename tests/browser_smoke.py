@@ -34,11 +34,23 @@ with sync_playwright() as p:
     expect(page.locator("#count")).to_have_text("20")
     canvas = page.locator('#photoCanvas')
     rectangle = canvas.bounding_box()
+    assert page.locator('#dotSize').input_value() == '2'
+    page.evaluate('''() => {
+      window.photoRedraws = 0;
+      const original = CanvasRenderingContext2D.prototype.drawImage;
+      CanvasRenderingContext2D.prototype.drawImage = function(...args) {
+        if (this.canvas.id === 'baseCanvas') window.photoRedraws++;
+        return original.apply(this, args);
+      };
+    }''')
     # Add one red dot and remove it using the same real pointer interaction.
     page.mouse.click(rectangle['x'] + rectangle['width'] * .1, rectangle['y'] + rectangle['height'] * .05)
     assert page.locator('#count').inner_text() == '21'
     page.mouse.click(rectangle['x'] + rectangle['width'] * .1, rectangle['y'] + rectangle['height'] * .05)
     assert page.locator('#count').inner_text() == '20'
+    page.locator('#dotSize').select_option('3')
+    page.locator('#dotSize').select_option('2')
+    assert page.evaluate('window.photoRedraws') == 0
     page.locator('#undoButton').click()
     assert page.locator('#count').inner_text() == '21'
     page.locator('#undoButton').click()
@@ -95,6 +107,34 @@ with sync_playwright() as p:
     mobile.locator('#zoomIn').click()
     assert mobile.locator('#zoomLabel').inner_text() == '150%'
     assert mobile.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+    mobile.locator('#fitButton').click()
+    # A vertical gesture over the photo scrolls the page without editing dots.
+    mobile.locator('#viewport').scroll_into_view_if_needed()
+    box = mobile.locator('#viewport').bounding_box()
+    session = mobile.context.new_cdp_session(mobile)
+    def swipe(x, y, dx, dy):
+        session.send('Input.dispatchTouchEvent', {'type':'touchStart', 'touchPoints':[{'x':x,'y':y}]})
+        for step in range(1, 9):
+            session.send('Input.dispatchTouchEvent', {'type':'touchMove', 'touchPoints':[{'x':x+dx*step/8,'y':y+dy*step/8}]})
+            mobile.wait_for_timeout(20)
+        session.send('Input.dispatchTouchEvent', {'type':'touchEnd','touchPoints':[]})
+    before = mobile.evaluate('window.scrollY')
+    swipe(box['x'] + box['width']/2, box['y'] + box['height']*.7, 0, -100)
+    mobile.wait_for_timeout(150)
+    assert mobile.evaluate('window.scrollY') > before + 20
+    assert mobile.locator('#count').inner_text() == '20'
+    # In explicit Move mode, the same gesture pans the zoomed photo instead.
+    mobile.locator('#zoomIn').click()
+    mobile.locator('[data-mode=pan]').click()
+    mobile.locator('#viewport').scroll_into_view_if_needed()
+    box = mobile.locator('#viewport').bounding_box()
+    before = mobile.evaluate('window.scrollY')
+    left = mobile.locator('#viewport').evaluate('(element) => element.scrollLeft')
+    swipe(box['x'] + box['width']*.7, box['y'] + box['height']/2, -50, 0)
+    assert mobile.locator('#viewport').evaluate('(element) => element.scrollLeft') > left
+    assert abs(mobile.evaluate('window.scrollY') - before) < 5
+    assert mobile.locator('#count').inner_text() == '20'
+    mobile.locator('[data-mode=edit]').click()
     mobile.locator('#fitButton').click()
     mobile.screenshot(path=str(folder / 'mobile-result.png'),full_page=True)
     mobile.reload(wait_until='networkidle')

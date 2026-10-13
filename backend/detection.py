@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 from scipy import ndimage as ndi
 from scipy.spatial import ConvexHull, QhullError
+from scipy.signal import find_peaks
 from skimage.segmentation import watershed
 
 MAX_PIXELS = 24_000_000
@@ -101,22 +102,48 @@ def solidity(region: np.ndarray) -> float:
         return 1.0
 
 
-def split_region(region: np.ndarray, mode: str) -> tuple[list[np.ndarray], bool]:
+def split_region(region: np.ndarray, mode: str, seed_area: float | None = None) -> tuple[list[np.ndarray], bool]:
     if mode == "off":
         return [region], False
-    # A convex elongated seed must not be split just because its distance ridge
-    # contains several maxima. Only consider visibly concave components.
+    # Use well separated grains in this same photo as a size reference. A
+    # broad group of parallel touching grains can be almost convex, so shape
+    # alone must not exclude it from examination. Area alone never sets count.
+    oversized = seed_area is not None and region.sum() > seed_area * 1.65
     limit = 0.94 if mode == "balanced" else 0.975
-    if solidity(region) >= limit:
+    if not oversized and solidity(region) >= limit:
         return [region], False
     distance = ndi.distance_transform_edt(region)
     smooth = ndi.gaussian_filter(distance, 0.8)
     radius = float(distance.max())
-    window = max(3, int(radius * (1.8 if mode == "balanced" else 1.2)) | 1)
+    # A large window previously suppressed the nearby centers of parallel
+    # touching grains. Relax spacing only when there is a size reference.
+    spacing = 1.1 if oversized else (1.8 if mode == "balanced" else 1.2)
+    window = max(3, int(radius * spacing) | 1)
     peaks = (smooth == ndi.maximum_filter(smooth, size=window)) & region
     peaks &= smooth > radius * (0.5 if mode == "balanced" else 0.35)
     islands, number = ndi.label(peaks)
     if number < 2:
+        if oversized:
+            # Parallel touching grains can have only one distance peak. Their
+            # outline still has separate bulges. Look for those along both
+            # axes, requiring plausible individual areas after partitioning.
+            for axis in (0, 1):
+                profile = ndi.gaussian_filter1d(region.sum(axis=axis).astype(float), 1.5)
+                centers, _ = find_peaks(profile, prominence=profile.max() * 0.12,
+                                        distance=max(3, np.sqrt(seed_area) * 0.35))
+                if not 2 <= len(centers) <= 12:
+                    continue
+                cuts = [0, *[(int(a) + int(b)) // 2 for a, b in zip(centers, centers[1:])], len(profile)]
+                parts = []
+                for left, right in zip(cuts, cuts[1:]):
+                    part = np.zeros_like(region)
+                    if axis == 0:
+                        part[:, left:right] = region[:, left:right]
+                    else:
+                        part[left:right, :] = region[left:right, :]
+                    parts.append(part)
+                if all(seed_area * 0.45 <= part.sum() <= seed_area * 1.55 for part in parts):
+                    return parts, True
         return [region], True
     if number > 12:
         return [region], True
@@ -131,6 +158,8 @@ def split_region(region: np.ndarray, mode: str) -> tuple[list[np.ndarray], bool]
     labels = watershed(-smooth, markers, mask=region)
     parts = [(labels == index) & region for index in range(1, number + 1)]
     parts = [part for part in parts if part.sum() >= max(8, region.sum() * 0.08)]
+    if oversized and any(part.sum() < seed_area * 0.28 for part in parts):
+        return [region], True
     return (parts if parts else [region]), True
 
 
@@ -172,6 +201,22 @@ def detect_image(payload: bytes | bytearray, options: Options = Options()) -> di
     # Reject huge regions (usually the background or a tray), rather than
     # returning thousands of fabricated detections within them.
     max_area = mask.size * 0.15
+    # A reference requires at least three similarly sized convex components.
+    # Do not infer a grain size from one object or from a dense pile alone.
+    sizes = []
+    for label, bounding in enumerate(slices, 1):
+        if bounding is None:
+            continue
+        region = labels[bounding] == label
+        area = int(region.sum())
+        if min_area <= area <= max_area and solidity(region) >= 0.94:
+            sizes.append(area)
+    seed_area = None
+    if len(sizes) >= 3:
+        median = float(np.median(sizes))
+        similar = [area for area in sizes if median * 0.65 <= area <= median * 1.45]
+        if len(similar) >= 3 and len(similar) >= len(sizes) * 0.6:
+            seed_area = float(np.median(similar))
     points = []
     rejected = 0
     sy, sx = height / mask.shape[0], width / mask.shape[1]
@@ -187,7 +232,7 @@ def detect_image(payload: bytes | bytearray, options: Options = Options()) -> di
             continue
         # Pad each component so distance_transform sees background on all sides.
         region = np.pad(region, 1)
-        parts, uncertain = split_region(region, options.split)
+        parts, uncertain = split_region(region, options.split, seed_area)
         edge = bounding[0].start == 0 or bounding[1].start == 0 or bounding[0].stop == mask.shape[0] or bounding[1].stop == mask.shape[1]
         for part in parts:
             if part.sum() < min_area:
@@ -215,6 +260,6 @@ def detect_image(payload: bytes | bytearray, options: Options = Options()) -> di
     return {
         "width": width, "height": height, "points": points, "count": len(points),
         "review_count": sum(point["review"] for point in points), "warnings": notes,
-        "method": "illumination-segmentation-watershed-v1",
+        "method": "illumination-segmentation-watershed-v2",
         "working_width": int(mask.shape[1]), "working_height": int(mask.shape[0]),
     }

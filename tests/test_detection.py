@@ -76,6 +76,37 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(result["review_count"], 2)
         self.assertEqual(detect_image(encode(image), Options(split="off"))["count"], 1)
 
+    def test_parallel_touching_triple_with_same_photo_size_reference(self):
+        # Shape-only gating used to return one for this nearly convex cluster.
+        image = Image.new("RGB", (500, 400), "white")
+        draw = ImageDraw.Draw(image)
+        for x in [60, 140, 220, 300]:
+            draw.ellipse((x - 20, 40, x + 20, 140), fill=(184, 144, 60))
+        for index in range(3):
+            draw.ellipse((180 + index * 26, 180, 220 + index * 26, 280), fill=(184, 144, 60))
+        for source in (image, image.rotate(90, expand=True)):
+            result = detect_image(encode(source))
+            self.assertEqual(result["count"], 7)
+            self.assertEqual(result["review_count"], 3)
+            self.assertEqual(detect_image(encode(source), Options(split="off"))["count"], 5)
+
+    def test_black_and_warm_grains_in_shadow(self):
+        image, positions = rice_scene()
+        draw = ImageDraw.Draw(image)
+        for x, y in positions[::2]:
+            draw.ellipse((x - 14, y - 30, x + 14, y + 30), fill=(27, 27, 27))
+        pixels = np.asarray(image).astype(float)
+        yy, xx = np.mgrid[:600, :800]
+        shade = 1 - 0.5 * np.exp(-((xx - 400) ** 2 + (yy - 300) ** 2) / 90000)
+        image = Image.fromarray((pixels * shade[:, :, None]).astype(np.uint8))
+        result = detect_image(encode(image))
+        self.assertEqual(result["count"], len(positions))
+
+    def test_large_single_grain_is_not_split_by_area_alone(self):
+        image, _ = rice_scene()
+        ImageDraw.Draw(image).ellipse((700, 500, 770, 580), fill=(27, 27, 27))
+        self.assertEqual(detect_image(encode(image))["count"], 21)
+
     def test_exif_rotation_uses_oriented_coordinates(self):
         image = Image.new("RGB", (400, 300), "white")
         ImageDraw.Draw(image).ellipse((80, 30, 100, 90), fill=(184, 144, 60))
